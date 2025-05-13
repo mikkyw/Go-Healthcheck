@@ -1,0 +1,225 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
+	"runtime"
+	"time"
+)
+
+type AppSettings struct {
+	Paths   []string `json:"paths"`
+	Domains []string `json:"domains"`
+}
+
+var settings AppSettings
+
+type URLStatus struct {
+	URL    string `json:"url"`
+	Status string `json:"status"`
+}
+
+func loadSettings() {
+	file, err := os.Open("appsettings.json")
+	if err != nil {
+		panic(fmt.Sprintf("Error opening appsettings.json: %v", err))
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&settings); err != nil {
+		panic(fmt.Sprintf("Error decoding appsettings.json: %v", err))
+	}
+}
+
+func checkURL(url string) string {
+	fmt.Println("CHECKING:", url)
+
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		fmt.Println("RETURNING: ERROR:", err) 
+		return fmt.Sprintf("ERROR: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		fmt.Println("RETURNING: OK") 
+		return "OK"
+	}
+	fmt.Println("RETURNING: HTTP", resp.StatusCode) 
+	return fmt.Sprintf("HTTP %d", resp.StatusCode)
+}
+
+func statusHandler(w http.ResponseWriter, r *http.Request) {
+	domain := r.URL.Query().Get("domain")
+	if domain == "" {
+		http.Error(w, "Missing domain parameter", http.StatusBadRequest)
+		return
+	}
+
+	var statuses []URLStatus
+	for _, path := range settings.Paths {
+		fullURL := fmt.Sprintf("https://%s%s", domain, path)
+		status := checkURL(fullURL)
+		statuses = append(statuses, URLStatus{
+			URL:    fullURL,
+			Status: status,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(statuses)
+}
+
+func configHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(settings)
+}
+
+func frontendHandler(w http.ResponseWriter, r *http.Request) {
+	html := `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>URL Health Checker</title>
+</head>
+<body>
+    <h1>URL Health Checker</h1>
+    <label for="domainSelect">Select Domain:</label>
+    <select id="domainSelect"></select>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>URL</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="statusTable"></tbody>
+    </table>
+
+    <script>
+        let domains = [];
+
+        async function loadConfig() {
+			const response = await fetch('/config');
+			const config = await response.json();
+			domains = config.domains;
+
+			const select = document.getElementById('domainSelect');
+			domains.forEach(domain => {
+				const option = document.createElement('option');
+				option.value = domain;
+				option.textContent = domain;
+				select.appendChild(option);
+			});
+
+			// default domain status
+			if (domains.length > 0) {
+				select.value = domains[0];
+				fetchStatus();
+			}
+
+			// change listener for switching domains
+			select.addEventListener('change', () => {
+				fetchStatus(); 
+			});
+		}
+
+
+
+        function getStatusColor(status) {
+            if (status === 'OK') {
+                return 'green';
+            }
+            if (status.startsWith('HTTP 4')) {
+                return 'orange'; // client errors like 404
+            }
+            if (status.startsWith('HTTP 5')) {
+                return 'red'; // server errors like 500
+            }
+            if (status.startsWith('ERROR')) {
+                return 'gray'; // network or connection errors
+            }
+            return 'black';
+        }
+
+        async function fetchStatus() {
+            const selectedDomain = document.getElementById('domainSelect').value;
+            if (!selectedDomain) return;
+
+            const response = await fetch('/status?domain=' + selectedDomain);
+            const statuses = await response.json();
+
+            const table = document.getElementById('statusTable');
+            table.innerHTML = '';
+
+            statuses.forEach(item => {
+                const row = document.createElement('tr');
+
+                const urlCell = document.createElement('td');
+                urlCell.textContent = item.url;
+
+                const statusCell = document.createElement('td');
+                statusCell.textContent = item.status;
+                statusCell.style.color = getStatusColor(item.status);
+
+                row.appendChild(urlCell);
+                row.appendChild(statusCell);
+                table.appendChild(row);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConfig();
+            document.getElementById('domainSelect').addEventListener('change', fetchStatus);
+            setInterval(fetchStatus, 10000); // refresh every 10 sec
+        });
+    </script>
+</body>
+</html>`
+	fmt.Fprint(w, html)
+}
+
+
+func openBrowser(url string) {
+	//for opening browser immediately
+	var err error
+
+	switch runtime.GOOS {
+	case "windows":
+		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	default:
+		err = exec.Command("xdg-open", url).Start()
+	}
+
+	if err != nil {
+		fmt.Println("Failed to open browser:", err)
+	}
+}
+
+func main() {
+	loadSettings()
+
+	http.HandleFunc("/", frontendHandler)
+	http.HandleFunc("/status", statusHandler)
+	http.HandleFunc("/config", configHandler)
+
+	fmt.Println("Server running on http://localhost:8080")
+
+	go func() {
+		time.Sleep(1 * time.Second)
+		openBrowser("http://localhost:8080")
+	}()
+
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		fmt.Println("Failed to start server:", err)
+	}
+}
