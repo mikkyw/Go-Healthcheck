@@ -38,19 +38,19 @@ func loadSettings() {
 func checkURL(url string) string {
 	fmt.Println("CHECKING:", url)
 
-	client := http.Client{Timeout: 5 * time.Second}
+	client := http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		fmt.Println("RETURNING: ERROR:", err) 
+		fmt.Println("RETURNING: ERROR:", err)
 		return fmt.Sprintf("ERROR: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
-		fmt.Println("RETURNING: OK") 
+		fmt.Println("RETURNING: OK")
 		return "OK"
 	}
-	fmt.Println("RETURNING: HTTP", resp.StatusCode) 
+	fmt.Println("RETURNING: HTTP", resp.StatusCode)
 	return fmt.Sprintf("HTTP %d", resp.StatusCode)
 }
 
@@ -87,6 +87,60 @@ func frontendHandler(w http.ResponseWriter, r *http.Request) {
 <head>
     <meta charset="UTF-8">
     <title>URL Health Checker</title>
+	<style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f1f5f0;
+        color: #2f4f4f;
+        margin: 0;
+        padding: 20px;
+        text-align: center;
+    }
+
+    h1 {
+        color: #5a7d64;
+        margin-bottom: 30px;
+    }
+
+    label, select {
+        font-size: 16px;
+        margin-bottom: 20px;
+    }
+
+    table {
+        margin: 20px auto;
+        border-collapse: collapse;
+        width: 80%;
+        max-width: 800px;
+        background-color: #ffffff;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    th, td {
+        border: 1px solid #b2c2b4;
+        padding: 12px 20px;
+        font-size: 14px;
+    }
+
+    th {
+        background-color: #d9e8dd;
+        color: #344e41;
+    }
+
+    tr:nth-child(even) {
+        background-color: #f6f9f7;
+    }
+
+    td {
+        word-break: break-all;
+    }
+
+    select {
+        padding: 5px 10px;
+        border-radius: 4px;
+        border: 1px solid #b2c2b4;
+    }
+	</style>
 </head>
 <body>
     <h1>URL Health Checker</h1>
@@ -184,7 +238,6 @@ func frontendHandler(w http.ResponseWriter, r *http.Request) {
 </html>`
 	fmt.Fprint(w, html)
 }
-
 
 func openBrowser(url string) {
 	//for opening browser immediately
