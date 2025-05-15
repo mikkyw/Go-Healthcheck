@@ -38,7 +38,7 @@ func loadSettings() {
 func checkURL(url string) string {
 	fmt.Println("CHECKING:", url)
 
-	client := http.Client{Timeout: 2 * time.Second}
+	client := http.Client{Timeout: 800 * time.Millisecond}
 	resp, err := client.Get(url)
 	if err != nil {
 		fmt.Println("RETURNING: ERROR:", err)
@@ -156,84 +156,73 @@ func frontendHandler(w http.ResponseWriter, r *http.Request) {
         <tbody id="statusTable"></tbody>
     </table>
 
-    <script>
-        let domains = [];
+<script>
+    let domains = [];
 
-        async function loadConfig() {
-			const response = await fetch('/config');
-			const config = await response.json();
-			domains = config.domains;
+    async function loadConfig() {
+        const response = await fetch('/config');
+        const config = await response.json();
+        domains = config.domains;
 
-			const select = document.getElementById('domainSelect');
-			domains.forEach(domain => {
-				const option = document.createElement('option');
-				option.value = domain;
-				option.textContent = domain;
-				select.appendChild(option);
-			});
-
-			// default domain status
-			if (domains.length > 0) {
-				select.value = domains[0];
-				fetchStatus();
-			}
-
-			// change listener for switching domains
-			select.addEventListener('change', () => {
-				fetchStatus(); 
-			});
-		}
-
-
-
-        function getStatusColor(status) {
-            if (status === 'OK') {
-                return 'green';
-            }
-            if (status.startsWith('HTTP 4')) {
-                return 'orange'; // client errors like 404
-            }
-            if (status.startsWith('HTTP 5')) {
-                return 'red'; // server errors like 500
-            }
-            if (status.startsWith('ERROR')) {
-                return 'gray'; // network or connection errors
-            }
-            return 'black';
-        }
-
-        async function fetchStatus() {
-            const selectedDomain = document.getElementById('domainSelect').value;
-            if (!selectedDomain) return;
-
-            const response = await fetch('/status?domain=' + selectedDomain);
-            const statuses = await response.json();
-
-            const table = document.getElementById('statusTable');
-            table.innerHTML = '';
-
-            statuses.forEach(item => {
-                const row = document.createElement('tr');
-
-                const urlCell = document.createElement('td');
-                urlCell.textContent = item.url;
-
-                const statusCell = document.createElement('td');
-                statusCell.textContent = item.status;
-                statusCell.style.color = getStatusColor(item.status);
-
-                row.appendChild(urlCell);
-                row.appendChild(statusCell);
-                table.appendChild(row);
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            loadConfig();
-            document.getElementById('domainSelect').addEventListener('change', fetchStatus);
-            setInterval(fetchStatus, 10000); // refresh every 10 sec
+        const select = document.getElementById('domainSelect');
+        domains.forEach(domain => {
+            const option = document.createElement('option');
+            option.value = domain;
+            option.textContent = domain;
+            select.appendChild(option);
         });
-    </script>
+
+        // default domain status
+        if (domains.length > 0) {
+            select.value = domains[0];
+            fetchStatus();
+        }
+
+        // change listener for switching domains
+        select.addEventListener('change', fetchStatus);
+    }
+
+    function getStatusColor(status) {
+        if (status === 'OK') return 'green';
+        if (status.startsWith('HTTP 4')) return 'orange';
+        if (status.startsWith('HTTP 5')) return 'red';
+        if (status.startsWith('ERROR')) return 'gray';
+        return 'black';
+    }
+
+    async function fetchStatus() {
+        const selectedDomain = document.getElementById('domainSelect').value;
+        if (!selectedDomain) return;
+
+        const response = await fetch('/status?domain=' + selectedDomain);
+        const statuses = await response.json();
+
+        const table = document.getElementById('statusTable');
+        table.innerHTML = '';
+
+        statuses.forEach(item => {
+            const row = document.createElement('tr');
+
+            const urlCell = document.createElement('td');
+            urlCell.textContent = item.url;
+
+            const statusCell = document.createElement('td');
+            statusCell.textContent = item.status;
+            statusCell.style.color = getStatusColor(item.status);
+
+            row.appendChild(urlCell);
+            row.appendChild(statusCell);
+            table.appendChild(row);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', loadConfig);
+</script>
+
+<button onclick="fetchStatus()" style="margin-top: 20px; padding: 10px 20px; font-size: 16px;">
+    Refresh
+</button>
+
 </body>
 </html>`
 	fmt.Fprint(w, html)
